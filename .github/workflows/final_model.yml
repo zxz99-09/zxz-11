@@ -1,0 +1,74 @@
+name: Run Script Daily at 6:00 seat_v6
+
+on:
+  schedule:
+    # 北京时间 6:00 = UTC 时间 22:00（前一天）
+    - cron: '50 21 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        script: [script1.py, script2.py]   # 两个任务，互不干扰
+      fail-fast: false                 # 即使一个失败，另一个也继续执行
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+
+      - name: Install ChromeDriver
+        run: |
+          pip install webdriver-manager
+          python3 -c "
+          from webdriver_manager.chrome import ChromeDriverManager
+          import shutil, os
+          driver_path = ChromeDriverManager().install()
+          shutil.copy2(driver_path, '/usr/local/bin/chromedriver')
+          os.chmod('/usr/local/bin/chromedriver', 0o755)
+          "
+
+      - name: Install fonts for headless browser
+        run: sudo apt-get install -y fonts-noto-cjk fonts-noto-color-emoji
+
+      - name: Run ${{ matrix.script }} and save full log
+        run: |
+          timeout 41m python ${{ matrix.script }} 2>&1 | tee output.log
+
+      - name: Encode full log for email (skip first 5 lines)
+        id: encode_log
+        run: |
+          echo "LOG_FULL<<EOF" >> $GITHUB_ENV
+          tail -n +6 output.log >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Send email with full log content
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "座位自动预约日志 - $(date +'%Y-%m-%d') - ${{ matrix.script }}"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: ${{ env.LOG_FULL }}
+          attachments: |
+            screenshots/screenshot_*.png
