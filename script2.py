@@ -829,7 +829,7 @@ def main():
             print(f"处理账号: {account}，使用临时目录: {profile_dir}")
             options = ChromeOptions()
             options.use_chromium = True
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')
             options.add_argument('--disable-gpu')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
